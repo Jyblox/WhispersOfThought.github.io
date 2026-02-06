@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper | Social Live</title>
+    
+    <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
+    
+    <style>
+        :root {
+            --bg: #020617;
+            --card: #0f172a;
+            --border: #1e293b;
+            --primary: #a855f7;
+            --secondary: #ec4899;
+            --text: #f8fafc;
+            --text-muted: #64748b;
+            --online: #22c55e;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding-bottom: 100px;
+        }
+
+        /* --- UI OVERLAYS --- */
+        #login-overlay {
+            position: fixed; inset: 0; background: var(--bg);
+            z-index: 9999; display: flex; align-items: center; justify-content: center;
+        }
+        .auth-card {
+            background: var(--card); padding: 40px; border-radius: 25px;
+            border: 1px solid var(--border); text-align: center; width: 320px;
+        }
+
+        /* --- NAVIGATION --- */
+        nav {
+            background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(10px);
+            position: sticky; top: 0; display: flex; justify-content: center;
+            padding: 15px; gap: 25px; border-bottom: 1px solid var(--border); z-index: 1000;
+        }
+        nav a { color: var(--text-muted); text-decoration: none; font-weight: 500; cursor: pointer; transition: 0.3s; }
+        nav a.active { color: var(--primary); }
+
+        .live-status {
+            position: absolute; left: 20px; top: 18px; display: flex; align-items: center; gap: 8px;
+            font-size: 0.75rem; color: var(--online);
+        }
+        .dot { width: 8px; height: 8px; background: var(--online); border-radius: 50%; box-shadow: 0 0 8px var(--online); }
+
+        .container { max-width: 550px; margin: 0 auto; padding: 20px; }
+        .page { display: none; }
+        .active-page { display: block; animation: fadeIn 0.3s ease; }
+
+        /* --- POSTS & COMMENTS --- */
+        .post-card {
+            background: var(--card); border: 1px solid var(--border);
+            padding: 20px; border-radius: 20px; margin-bottom: 20px;
+        }
+        .avatar { 
+            width: 32px; height: 32px; border-radius: 50%; 
+            background: var(--primary); display: flex; align-items: center; 
+            justify-content: center; font-weight: bold; font-size: 12px;
+        }
+        .comment-section { border-top: 1px solid var(--border); padding-top: 15px; margin-top: 15px; }
+        .comment-item { font-size: 0.85rem; margin-bottom: 8px; color: #cbd5e1; }
+
+        /* --- CHAT --- */
+        #chat-wrapper { position: fixed; bottom: 25px; right: 25px; z-index: 5000; display: flex; flex-direction: column; align-items: flex-end; }
+        #chat-bubble { width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 24px; box-shadow: 0 8px 20px rgba(168, 85, 247, 0.4); }
+        #chat-window { width: 300px; height: 400px; background: var(--card); border: 1px solid var(--border); border-radius: 20px; margin-bottom: 15px; display: none; flex-direction: column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
+        #chat-msgs { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; }
+
+        input, textarea { background: #020617; border: 1px solid var(--border); color: white; padding: 10px; border-radius: 10px; outline: none; box-sizing: border-box; }
+        button { background: var(--primary); border: none; color: white; padding: 8px 16px; border-radius: 10px; cursor: pointer; font-weight: bold; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <div id="login-overlay">
+        <div class="auth-card">
+            <h1 style="margin:0; color: var(--primary);">WHISPER</h1>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px;">Connect to the live stream</p>
+            <input type="text" id="user-input" placeholder="Enter Username" style="width:100%; margin-bottom:15px;">
+            <button onclick="login()" style="width:100%; padding:12px;">Login</button>
+        </div>
+    </div>
+
+    <nav id="navbar" style="display:none">
+        <div class="live-status"><div class="dot"></div> <span id="u-count">1</span> Online</div>
+        <a id="l-home" onclick="nav('home')" class="active">Home</a>
+        <a id="l-write" onclick="nav('write')">Write</a>
+        <a id="l-profile" onclick="nav('profile')">Profile</a>
+    </nav>
+
+    <div class="container">
+        <div id="p-home" class="page active-page"></div>
+        <div id="p-write" class="page">
+            <div class="post-card">
+                <h3>New Thought</h3>
+                <textarea id="thought-in" style="width:100%; height:120px; margin-bottom:15px;" placeholder="What's unsaid?"></textarea>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <label style="font-size:0.85rem;"><input type="checkbox" id="anon"> Anonymous</label>
+                    <button onclick="post()">Broadcast</button>
+                </div>
+            </div>
+        </div>
+        <div id="p-profile" class="page">
+            <div id="user-tag" style="text-align:center;"></div>
+            <div id="user-posts"></div>
+            <button onclick="logout()" style="background:none; border: 1px solid #ef4444; color:#ef4444; width:100%; margin-top:20px; transition:0.3s;" onmouseover="this.style.background='#ef4444'; this.style.color='white'" onmouseout="this.style.background='none'; this.style.color='#ef4444'">Logout Session</button>
+        </div>
+    </div>
+
+    <div id="chat-wrapper" style="display:none">
+        <div id="chat-window">
+            <div style="background:var(--border); padding:12px; font-weight:bold;">Global Chat</div>
+            <div id="chat-msgs"></div>
+            <div style="padding:10px; display:flex; gap:5px;"><input type="text" id="chat-in" style="flex:1;"><button onclick="sendChat()">></button></div>
+        </div>
+        <div id="chat-bubble" onclick="toggleChat()">💬</div>
+    </div>
+
+    <script>
+        // --- PUSHER CONFIG ---
+        const PUSHER_KEY = '67dc8116892148b25486';
+        const PUSHER_CLUSTER = 'ap3';
+        const pusher = new Pusher(PUSHER_KEY, { cluster: PUSHER_CLUSTER });
+        const channel = pusher.subscribe('whisper-global');
+
+        let user = localStorage.getItem('w_user');
+        let posts = JSON.parse(localStorage.getItem('w_posts')) || [];
+        let chats = JSON.parse(localStorage.getItem('w_chats')) || [];
+        let onlineUsers = new Set();
+
+        // --- LISTENERS ---
+        channel.bind('new-whisper', (data) => { if(data.owner !== user) { posts.unshift(data); sync(); } });
+        channel.bind('new-comment', (data) => {
+            const p = posts.find(x => x.id === data.postId);
+            if(p && data.u !== user) { p.comments.push({u: data.u, t: data.t}); sync(); }
+        });
+        channel.bind('pulse', (data) => {
+            onlineUsers.add(data.u);
+            document.getElementById('u-count').innerText = onlineUsers.size;
+            setTimeout(() => { onlineUsers.delete(data.u); document.getElementById('u-count').innerText = Math.max(1, onlineUsers.size); }, 10000);
+        });
+
+        // --- AUTH ---
+        function login() {
+            const name = document.getElementById('user-input').value.trim();
+            if(name) { localStorage.setItem('w_user', name); location.reload(); }
+        }
+        function logout() {
+            if(confirm("Logout of session?")) { localStorage.removeItem('w_user'); location.reload(); }
+        }
+
+        // --- LOGIC ---
+        function nav(id) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active-page'));
+            document.getElementById('p-'+id).classList.add('active-page');
+            document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+            document.getElementById('l-'+id).classList.add('active');
+            render();
+        }
+
+        function post() {
+            const txt = document.getElementById('thought-in').value;
+            if(!txt.trim()) return;
+            const pData = { id: Date.now(), owner: user, author: document.getElementById('anon').checked ? "Anonymous" : user, content: txt, comments: [] };
+            posts.unshift(pData);
+            // In real app, trigger this via server or Pusher Debugger
+            console.log("Post Triggered:", pData); 
+            document.getElementById('thought-in').value = "";
+            sync(); nav('home');
+        }
+
+        function addComment(id, source) {
+            const input = document.getElementById(`ci-${source}-${id}`);
+            if(!input.value.trim()) return;
+            const p = posts.find(x => x.id === id);
+            p.comments.push({u: user, t: input.value});
+            input.value = ""; sync();
+        }
+
+        function sync() { localStorage.setItem('w_posts', JSON.stringify(posts)); render(); }
+
+        function render() {
+            const home = document.getElementById('p-home');
+            const profile = document.getElementById('user-posts');
+            home.innerHTML = ""; profile.innerHTML = "";
+            posts.forEach(p => {
+                const html = (s) => `
+                    <div class="post-card">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                            <div style="display:flex; align-items:center; gap:10px;"><div class="avatar">${p.author[0]}</div><b>${p.author}</b></div>
+                        </div>
+                        <p>${p.content}</p>
+                        <div class="comment-section">
+                            ${p.comments.map(c => `<div class="comment-item"><b>${c.u}</b>: ${c.t}</div>`).join('')}
+                            <div style="display:flex; gap:5px; margin-top:10px;">
+                                <input type="text" id="ci-${s}-${p.id}" placeholder="Reply..." style="flex:1; font-size:0.8rem;">
+                                <button onclick="addComment(${p.id}, '${s}')">Reply</button>
+                            </div>
+                        </div>
+                    </div>`;
+                home.innerHTML += html('home');
+                if(p.owner === user) profile.innerHTML += html('profile');
+            });
+        }
+
+        function toggleChat() {
+            const win = document.getElementById('chat-window');
+            win.style.display = win.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        setInterval(() => { if(user) console.log("Pulse Sent"); }, 5000);
+
+        if(user) {
+            document.getElementById('login-overlay').style.display = 'none';
+            document.getElementById('navbar').style.display = 'flex';
+            document.getElementById('chat-wrapper').style.display = 'flex';
+            document.getElementById('user-tag').innerHTML = `<h2>@${user}</h2>`;
+            render();
+        }
+    </script>
+</body>
+</html>
